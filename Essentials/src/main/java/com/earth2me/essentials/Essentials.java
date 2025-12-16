@@ -45,6 +45,7 @@ import com.earth2me.essentials.utils.FormatUtil;
 import com.earth2me.essentials.utils.VersionUtil;
 import io.papermc.lib.PaperLib;
 import net.ess3.api.Economy;
+import com.earth2me.essentials.config.EssentialsConfiguration;
 import net.ess3.api.IEssentials;
 import net.ess3.api.IItemDb;
 import net.ess3.api.IJails;
@@ -66,13 +67,13 @@ import net.ess3.provider.ProviderListener;
 import net.ess3.provider.ServerStateProvider;
 import net.ess3.provider.providers.BaseBannerDataProvider;
 import net.ess3.provider.providers.BaseInventoryViewProvider;
-import net.ess3.provider.providers.BaseLoggerProvider;
 import net.ess3.provider.providers.BlockMetaSpawnerItemProvider;
 import net.ess3.provider.providers.BukkitMaterialTagProvider;
 import net.ess3.provider.providers.BukkitSpawnerBlockProvider;
 import net.ess3.provider.providers.FixedHeightWorldInfoProvider;
 import net.ess3.provider.providers.FlatSpawnEggProvider;
 import net.ess3.provider.providers.LegacyBannerDataProvider;
+import net.ess3.provider.providers.LegacyBiomeNameProvider;
 import net.ess3.provider.providers.LegacyDamageEventProvider;
 import net.ess3.provider.providers.LegacyInventoryViewProvider;
 import net.ess3.provider.providers.LegacyItemUnbreakableProvider;
@@ -120,18 +121,13 @@ import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.inventory.InventoryView;
-import org.bukkit.plugin.InvalidDescriptionException;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.plugin.java.JavaPluginLoader;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -187,50 +183,9 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
         EconomyLayers.init();
     }
 
-    public Essentials() {
-    }
-
-    protected Essentials(final JavaPluginLoader loader, final PluginDescriptionFile description, final File dataFolder, final File file) {
-        super(loader, description, dataFolder, file);
-    }
-
-    public Essentials(final Server server) {
-        super(new JavaPluginLoader(server), new PluginDescriptionFile("Essentials", "", "com.earth2me.essentials.Essentials"), null, null);
-    }
-
     @Override
     public ISettings getSettings() {
         return settings;
-    }
-
-    public void setupForTesting(final Server server) throws IOException, InvalidDescriptionException {
-        TESTING = true;
-        LOGGER = new BaseLoggerProvider(this, BUKKIT_LOGGER);
-        final File dataFolder = File.createTempFile("essentialstest", "");
-        if (!dataFolder.delete()) {
-            throw new IOException();
-        }
-        if (!dataFolder.mkdir()) {
-            throw new IOException();
-        }
-        i18n = new I18n(this);
-        i18n.onEnable();
-        i18n.updateLocale("en");
-        Console.setInstance(this);
-
-        LOGGER.log(Level.INFO, AdventureUtil.miniToLegacy(tlLiteral("usingTempFolderForTesting")));
-        LOGGER.log(Level.INFO, dataFolder.toString());
-        settings = new Settings(this);
-        mail = new MailServiceImpl(this);
-        userMap = new ModernUserMap(this);
-        balanceTop = new BalanceTopImpl(this);
-        permissionsHandler = new PermissionsHandler(this, false);
-        Economy.setEss(this);
-        confList = new ArrayList<>();
-        jails = new Jails(this);
-        registerListeners(server.getPluginManager());
-        kits = new Kits(this);
-        bukkitAudience = BukkitAudiences.create(this);
     }
 
     @Override
@@ -289,6 +244,10 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
 
             if (VersionUtil.getSupportStatusClass() != null) {
                 getLogger().info(AdventureUtil.miniToLegacy(tlLiteral("serverUnsupportedClass", VersionUtil.getSupportStatusClass())));
+            }
+
+            if (VersionUtil.getServerBukkitVersion().isSnapshot()) {
+                getLogger().severe(AdventureUtil.miniToLegacy(tlLiteral("serverSnapshot")));
             }
 
             final PluginManager pm = getServer().getPluginManager();
@@ -420,13 +379,18 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
             // Inventory View Provider
             providerFactory.registerProvider(LegacyInventoryViewProvider.class, BaseInventoryViewProvider.class);
 
+            // Biome Name Provider
+            providerFactory.registerProvider(LegacyBiomeNameProvider.class);
+
             // Biome Key Provider
             providerFactory.registerProvider(PaperBiomeKeyProvider.class);
 
             // Tick Count Provider
             providerFactory.registerProvider(PaperTickCountProvider.class);
 
-            providerFactory.finalizeRegistration();
+            if (!TESTING) {
+                providerFactory.finalizeRegistration();
+            }
 
             // Event Providers
             if (PaperLib.isPaper()) {
@@ -464,15 +428,17 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
             PermissionsDefaults.registerAllBackDefaults();
             PermissionsDefaults.registerAllHatDefaults();
 
-            updateChecker = new UpdateChecker(this);
-            runTaskAsynchronously(() -> {
-                getLogger().log(Level.INFO, AdventureUtil.miniToLegacy(tlLiteral("versionFetching")));
-                for (final Component component : updateChecker.getVersionMessages(false, true, new CommandSource(this, Bukkit.getConsoleSender()))) {
-                    getLogger().log(getSettings().isUpdateCheckEnabled() ? Level.WARNING : Level.INFO, AdventureUtil.adventureToLegacy(component));
-                }
-            });
+            if (!TESTING) {
+                updateChecker = new UpdateChecker(this);
+                runTaskAsynchronously(() -> {
+                    getLogger().log(Level.INFO, AdventureUtil.miniToLegacy(tlLiteral("versionFetching")));
+                    for (final Component component : updateChecker.getVersionMessages(false, true, new CommandSource(this, Bukkit.getConsoleSender()))) {
+                        getLogger().log(getSettings().isUpdateCheckEnabled() ? Level.WARNING : Level.INFO, AdventureUtil.adventureToLegacy(component));
+                    }
+                });
 
-            metrics = new MetricsWrapper(this, 858, true);
+                metrics = new MetricsWrapper(this, 858, true);
+            }
 
             execTimer.mark("Init(External)");
 
@@ -486,7 +452,9 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
             handleCrash(ex);
             throw ex;
         }
-        getBackup().setPendingShutdown(false);
+        if (!TESTING) {
+            getBackup().setPendingShutdown(false);
+        }
     }
 
     // Returns our provider logger if available
@@ -554,11 +522,19 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
 
     @Override
     public void onDisable() {
-        final boolean stopping = provider(ServerStateProvider.class).isStopping();
+        if (bukkitAudience != null) {
+            bukkitAudience.close();
+        }
+
+        final boolean stopping = TESTING || provider(ServerStateProvider.class).isStopping();
         if (!stopping) {
             LOGGER.log(Level.SEVERE, AdventureUtil.miniToLegacy(tlLiteral("serverReloading")));
         }
-        getBackup().setPendingShutdown(true);
+
+        if (!TESTING) {
+            getBackup().setPendingShutdown(true);
+        }
+
         for (final User user : getOnlineUsers()) {
             if (user.isVanished()) {
                 user.setVanished(false);
@@ -575,7 +551,7 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
             }
         }
         cleanupOpenInventories();
-        if (getBackup().getTaskLock() != null && !getBackup().getTaskLock().isDone()) {
+        if (!TESTING && getBackup().getTaskLock() != null && !getBackup().getTaskLock().isDone()) {
             LOGGER.log(Level.SEVERE, AdventureUtil.miniToLegacy(tlLiteral("backupInProgress")));
             getBackup().getTaskLock().join();
         }
@@ -586,11 +562,16 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
             backup.stopTask();
         }
 
-        this.getPermissionsHandler().unregisterContexts();
+        if (!TESTING) {
+            this.getPermissionsHandler().unregisterContexts();
+        }
 
         Economy.setEss(null);
+        AdventureUtil.setEss(null);
         Trade.closeLog();
         getUsers().shutdown();
+
+        EssentialsConfiguration.shutdownExecutor();
 
         HandlerList.unregisterAll(this);
     }
@@ -766,7 +747,9 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
                     LOGGER.log(Level.INFO, "CommandBlock at " + bSenderBlock.getX() + "," + bSenderBlock.getY() + "," + bSenderBlock.getZ() + " issued server command: /" + commandLabel + " " + EssentialsCommand.getFinalArg(args, 0));
                 }
             } else if (user == null) {
-                LOGGER.log(Level.INFO, cSender.getName()+ " issued server command: /" + commandLabel + " " + EssentialsCommand.getFinalArg(args, 0));
+                if (getSettings().logConsoleCommands()) {
+                    LOGGER.log(Level.INFO, cSender.getName()+ " issued server command: /" + commandLabel + " " + EssentialsCommand.getFinalArg(args, 0));
+                }
             }
 
             final CommandSource sender = new CommandSource(this, cSender);
@@ -979,13 +962,23 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
         final User user;
         Player exPlayer;
 
+        if (sourceUser != null && (searchTerm.equals("@p") || searchTerm.equals("@s"))) {
+            return sourceUser;
+        }
+
         try {
             exPlayer = server.getPlayer(UUID.fromString(searchTerm));
         } catch (final IllegalArgumentException ex) {
+            // Prefer exact online name match first always
             if (getOffline) {
+                // When offline lookups are allowed, do not pick partial online matches here; allow exact offline match later
                 exPlayer = server.getPlayerExact(searchTerm);
             } else {
-                exPlayer = server.getPlayer(searchTerm);
+                exPlayer = server.getPlayerExact(searchTerm);
+                if (exPlayer == null) {
+                    // Only consider partial/prefix online match when not explicitly doing an offline-capable lookup
+                    exPlayer = server.getPlayer(searchTerm);
+                }
             }
         }
 
@@ -1022,6 +1015,16 @@ public class Essentials extends JavaPlugin implements net.ess3.api.IEssentials {
                 }
             }
         } else {
+            // Prefer exact username match among the matched players
+            for (final Player player : matches) {
+                if (player.getName().equalsIgnoreCase(searchTerm)) {
+                    final User userMatch = getUser(player);
+                    if (getHidden || canInteractWith(sourceUser, userMatch)) {
+                        return userMatch;
+                    }
+                }
+            }
+            // Then prefer display name/prefix match as before
             for (final Player player : matches) {
                 final User userMatch = getUser(player);
                 if (userMatch.getDisplayName().startsWith(searchTerm) && (getHidden || canInteractWith(sourceUser, userMatch))) {

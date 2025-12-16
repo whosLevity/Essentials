@@ -124,7 +124,13 @@ public enum Mob {
     ARMADILLO("Armadillo", Enemies.FRIENDLY, "ARMADILLO"),
     BREEZE("Breeze", Enemies.ENEMY, "BREEZE"),
     BOGGED("Bogged", Enemies.ENEMY, "BOGGED"),
-    CREAKING("Creaking", Enemies.ENEMY, "CREAKING")
+    CREAKING("Creaking", Enemies.ENEMY, "CREAKING"),
+    HAPPY_GHAST("HappyGhast", Enemies.FRIENDLY, "HAPPY_GHAST"),
+    COPPER_GOLEM("CopperGolem", Enemies.FRIENDLY, "COPPER_GOLEM"),
+    CAMEL_HUSK("CamelHusk", Enemies.NEUTRAL, "CAMEL_HUSK"),
+    NAUTILUS("Nautilus", Enemies.NEUTRAL, "NAUTILUS"),
+    ZOMBIE_NAUTILUS("ZombieNautilus", Enemies.NEUTRAL, "ZOMBIE_NAUTILUS"),
+    PARCHED("Parched", Enemies.ENEMY, "PARCHED"),
     ;
 
     private static final Map<String, Mob> hashMap = new HashMap<>();
